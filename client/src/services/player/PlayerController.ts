@@ -890,12 +890,76 @@ class PlayerController {
             ];
         }
 
+        // CMチャプター用ハンドラー追加
+        this.setupCmSkipperHandler();
+
         // 登録されている PlayerManager をすべて初期化
         // これにより各 PlayerManager での実際の処理が開始される
         // 同期処理すると時間が掛かるので、並行して実行する
         await Promise.all(this.player_managers.map((player_manager) => player_manager.init()));
 
         console.log('\u001b[31m[PlayerController] Initialized.');
+    }
+
+    // TODO On/Off切り替え機能、タイマーの時間を選べるように、画面に即時スキップ/キャンセルボタン表示
+    private setupCmSkipperHandler(): void {
+        assert(this.player !== null);
+        const player_store = usePlayerStore();
+
+        if (this.playback_mode === 'Live') {
+            return;
+        }
+
+        let cmSkipTimer: null | number = null;
+        this.player.on('timeupdate', () => {
+            if(this.player == null) return;
+            // 再生中のみ動作するように
+            if (this.player.video.paused) {
+                return;
+            }
+            const cmSections = player_store.recorded_program?.recorded_video?.cm_sections;
+            if(cmSections == null || cmSections.length == 0) {
+                return;
+            }
+            const currentTime = this.player.video.currentTime;
+            // 現在時間がCM区間内かチェック
+            const currentCM = cmSections.find(segment =>
+                currentTime >= segment.start_time && currentTime < segment.end_time
+            );
+
+            if (currentCM && !cmSkipTimer) {
+                // CM区間に入った時点で5秒後のスキップタイマーを設定
+                this.player.notice('5秒後にCMスキップします。');
+                cmSkipTimer = window.setTimeout(() => {
+                    if(this.player == null) return;
+                    this.player.seek(currentCM.end_time);
+                    this.player.notice('CMスキップしました。');
+                    cmSkipTimer = null;
+                }, 5000);
+            } else if (!currentCM && cmSkipTimer) {
+                // CM区間外に出たらタイマークリア
+                clearTimeout(cmSkipTimer);
+                cmSkipTimer = null;
+            }
+        });
+
+        this.player.on('seeking', () => {
+            if (cmSkipTimer) {
+                if(this.player == null) return;
+                clearTimeout(cmSkipTimer);
+                cmSkipTimer = null;
+                this.player.notice('CMスキップを中止しました。');
+            }
+        });
+
+        this.player.on('pause', () => {
+            if (cmSkipTimer) {
+                if(this.player == null) return;
+                clearTimeout(cmSkipTimer);
+                cmSkipTimer = null;
+                this.player.notice('CMスキップを中止しました。');
+            }
+        });
     }
 
 
