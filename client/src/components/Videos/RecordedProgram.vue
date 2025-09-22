@@ -10,6 +10,9 @@
                 <img class="recorded-program__thumbnail-image" loading="lazy" decoding="async"
                     :src="`${Utils.api_base_url}/videos/${program.id}/thumbnail`">
                 <div class="recorded-program__thumbnail-duration">{{ProgramUtils.getProgramDuration(program)}}</div>
+                <div v-if="program.recorded_video.cm_sections !== null && program.recorded_video.cm_sections.length !== 0"
+                     class="recorded-program__thumbnail-cm">CM
+                </div>
                 <div v-if="program.recorded_video.status === 'Recording'" class="recorded-program__thumbnail-status recorded-program__thumbnail-status--recording">
                     <div class="recorded-program__thumbnail-status-dot"></div>
                     録画中
@@ -349,6 +352,21 @@ const deleteVideo = async () => {
             position: absolute;
             right: 4px;
             bottom: 4px;
+            padding: 3px 4px;
+            border-radius: 2px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            font-size: 11px;
+            line-height: 1;
+            @include smartphone-vertical {
+                font-size: 10.5px;
+            }
+        }
+
+        &-cm {
+            position: absolute;
+            left: 4px;
+            top: 4px;
             padding: 3px 4px;
             border-radius: 2px;
             background: rgba(0, 0, 0, 0.7);
