@@ -1,4 +1,3 @@
-
 import APIClient from  '@/services/APIClient';
 import { IChannel } from '@/services/Channels';
 import { CommentUtils } from '@/utils';
@@ -158,16 +157,17 @@ export interface IJikkyoComments {
     detail: string;
 }
 
+/** Fork機能: カスタム検索条件を表すインターフェース */
 export interface ICustomSearch {
     major_genres?: string;
     from_date?: string;
     to_date?: string;
 }
 
-class Videos {
+class ForkVideos {
 
     /**
-     * 録画番組一覧を取得する
+     * Fork機能拡張版: 録画番組一覧を取得する（カスタム検索対応）
      * @param order ソート順序 ('desc' or 'asc' or 'ids')
      * @param page ページ番号
      * @param ids 録画番組の ID のリスト
@@ -361,4 +361,4 @@ class Videos {
     }
 }
 
-export default Videos;
+export default ForkVideos;

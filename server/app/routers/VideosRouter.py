@@ -1,6 +1,7 @@
-
+import copy
 import json
 import pathlib
+from datetime import datetime, timedelta
 from email.utils import parsedate
 from typing import Annotated, Any, Literal
 
@@ -278,6 +279,10 @@ async def VideosAPI(
     order: Annotated[Literal['desc', 'asc', 'ids'], Query(description='ソート順序 (desc or asc or ids) 。ids を指定すると、ids パラメータで指定された順序を維持する。')] = 'desc',
     page: Annotated[int, Query(description='ページ番号。')] = 1,
     ids: Annotated[list[int] | None, Query(description='録画番組 ID のリスト。指定時は指定された ID の録画番組のみを返す。')] = None,
+    major_genres: Annotated[str, Query(description='メジャージャンル')] = None,
+    only_viewable : Annotated[Literal['0', '1'], Query(description='視聴可能か否か')] = '0',
+    from_date: Annotated[str, Query(description='開始日')] = None,
+    to_date: Annotated[str, Query(description='終了日')] = None,
 ):
     """
     すべての録画番組を一度に 30 件ずつ取得する。<br>
@@ -407,16 +412,58 @@ async def VideosAPI(
             total_params = ids
 
     else:
-        # すべての録画番組を返す
+        where_parts = []
+        params = []
+        if major_genres is not None:
+            where_parts.append('''
+            AND EXISTS (
+            SELECT 1
+            FROM json_each(rp.genres) AS gen
+            WHERE json_extract(gen.value, '$.major') = ?
+            )
+            ''')
+            params.append(major_genres)
+
+        if only_viewable == '1':
+            where_parts.append('''
+            AND rv.key_frames != '[]'
+            ''')
+
+        if from_date is not None and datetime.strptime(from_date, '%Y-%m-%d'):
+            where_parts.append('''
+                        AND rv.recording_start_time >= ?
+                        ''')
+            params.append(from_date)
+
+        if to_date is not None and (to_date_obj := datetime.strptime(to_date, '%Y-%m-%d')):
+            to_date_obj = to_date_obj + timedelta(days=1)
+            where_parts.append('''
+                        AND rv.recording_start_time < ?
+                        ''')
+            params.append(to_date_obj.strftime('%Y-%m-%d'))
+
+
+        total_params = copy.copy(params)
+
         query = base_query.format(
-            where_clause = '',
-            order = 'DESC' if order == 'desc' else 'ASC'
+            where_clause=' '.join(where_parts),
+            order='DESC' if order == 'desc' else 'ASC'
         )
-        params = [str(PAGE_SIZE), str((page - 1) * PAGE_SIZE)]
+
+        params.append(str(PAGE_SIZE))
+        params.append(str((page - 1) * PAGE_SIZE))
 
         # 総数を取得
-        total_query = 'SELECT COUNT(*) as count FROM recorded_programs'
-        total_params = []
+        total_query = '''
+        SELECT COUNT(*) as count
+        FROM recorded_programs rp
+        JOIN recorded_videos rv ON rp.id = rv.recorded_program_id
+        LEFT JOIN channels ch ON rp.channel_id = ch.id
+        WHERE 1=1
+        {where_clause}
+        '''.format(
+            where_clause = ' '.join(where_parts),
+        )
 
     try:
         # データベースから直接クエリを実行

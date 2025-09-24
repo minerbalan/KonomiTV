@@ -8,10 +8,10 @@
                         <Icon class="navigation__link-icon" icon="fluent:tv-20-regular" width="26px" />
                         <span class="navigation__link-text">テレビをみる</span>
                     </router-link>
-                    <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/videos/"
-                        :class="{'navigation__link--active': $route.path.startsWith('/videos')}">
+                    <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/fork/videos/programs"
+                        :class="{'navigation__link--active': $route.path.startsWith('/fork/videos/programs')}">
                         <Icon class="navigation__link-icon" icon="fluent:movies-and-tv-20-regular" width="26px" />
-                        <span class="navigation__link-text">ビデオをみる</span>
+                        <span class="navigation__link-text">ビデオ(fork)</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/timetable/"
                         :class="{'navigation__link--active': $route.path.startsWith('/timetable')}">
@@ -37,6 +37,11 @@
                         :class="{'navigation__link--active': $route.path.startsWith('/watched-history')}">
                         <Icon class="navigation__link-icon" icon="fluent:history-20-regular" width="26px" />
                         <span class="navigation__link-text">視聴履歴</span>
+                    </router-link>
+                    <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/videos/"
+                                 :class="{'navigation__link--active': $route.path.startsWith('/videos')}">
+                        <Icon class="navigation__link-icon" icon="fluent:movies-and-tv-20-regular" width="26px" />
+                        <span class="navigation__link-text">ビデオをみる(オリジナル)</span>
                     </router-link>
                     <v-spacer></v-spacer>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/settings/"

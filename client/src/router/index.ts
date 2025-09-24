@@ -45,6 +45,11 @@ const router = createRouter({
             component: () => import('@/views/Videos/Programs.vue'),
         },
         {
+            path: '/fork/videos/programs',
+            name: 'Fork Programs',
+            component: () => import('@/fork/views/ForkProgramsView.vue'),
+        },
+        {
             path: '/videos/watch/:video_id',
             name: 'Videos Watch',
             component: () => import('@/views/Videos/Watch.vue'),

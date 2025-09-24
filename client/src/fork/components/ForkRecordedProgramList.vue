@@ -45,7 +45,7 @@
                 </v-btn>
             </div>
         </div>
-        <div v-if="showCustomChoice">
+        <div v-if="showCustomChoice" class="my-2">
             <ForkVideoChoice v-model:customSearch="customSearch" @change="handleVideoChoiceChange"></ForkVideoChoice>
         </div>
         <div class="recorded-program-list__grid"
@@ -87,9 +87,9 @@
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import ForkVideoChoice from '@/fork/components/ForkVideoChoice.vue';
 import RecordedProgram from '@/components/Videos/RecordedProgram.vue';
-import {ICustomSearch, IRecordedProgram, MylistSortOrder, SortOrder} from '@/services/Videos';
+import ForkVideoChoice from '@/fork/components/ForkVideoChoice.vue';
+import { ICustomSearch, IRecordedProgram, MylistSortOrder, SortOrder } from '@/fork/services/ForkVideos';
 import Utils from '@/utils';
 
 const router = useRouter();
@@ -132,14 +132,14 @@ const props = withDefaults(defineProps<{
     isSearching: false,
     forMylist: false,
     forWatchedHistory: false,
-    customSearch: () => ({}), // Fork機能: カスタム検索の初期値
+    customSearch: () => ({}),
 });
 
 // Emits
 const emit = defineEmits<{
     (e: 'update:page', page: number): void;
     (e: 'update:sortOrder', order: SortOrder | MylistSortOrder): void;
-    (e: 'update:customSearch', customSearch: ICustomSearch): void; // Fork機能: カスタム検索更新
+    (e: 'update:customSearch', customSearch: ICustomSearch): void;
     (e: 'more'): void;
 }>();
 
@@ -348,7 +348,6 @@ const handleVideoChoiceChange = (payload: { genre: string | null; date: string |
         }
 
         :deep(.recorded-program) {
-            // 最後の項目以外の下にボーダーを追加
             &:not(:last-child) > .recorded-program__container {
                 border-bottom: 1px solid rgb(var(--v-theme-background-lighten-2));
             }
