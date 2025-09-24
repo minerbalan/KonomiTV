@@ -52,7 +52,7 @@ export default {
     name: 'ForkResponsiveSelect',
     props: {
         modelValue: {
-            type: [String, Number],
+            type: [String, null],
             default: null
         },
         options: {
