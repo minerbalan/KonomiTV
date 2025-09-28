@@ -41,6 +41,7 @@ from app.routers import (
     VersionRouter,
     VideosRouter,
     VideoStreamsRouter,
+    ForkCleanDatabase,
 )
 from app.streams.LiveStream import LiveStream
 from app.utils.edcb.EDCBTuner import EDCBTuner
@@ -82,6 +83,7 @@ app.include_router(UsersRouter.router)
 app.include_router(SettingsRouter.router)
 app.include_router(MaintenanceRouter.router)
 app.include_router(VersionRouter.router)
+app.include_router(ForkCleanDatabase.router)
 
 # CORS の設定
 ## 開発環境では全てのオリジンからのリクエストを許可
