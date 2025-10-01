@@ -49,6 +49,12 @@ const router = createRouter({
             name: 'Fork Programs',
             component: () => import('@/fork/views/ForkProgramsView.vue'),
         },
+        // Fork: 録画番組番組表ページ
+        {
+            path: '/fork/videos/timetable',
+            name: 'Fork Recorded Timetable',
+            component: () => import('@/fork/views/ForkRecordedTimetableView.vue'),
+        },
         {
             path: '/videos/watch/:video_id',
             name: 'Videos Watch',

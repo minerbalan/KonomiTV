@@ -359,6 +359,29 @@ class ForkVideos {
 
         return true;
     }
+
+    /**
+     * Fork機能: 録画番組番組表データを取得する
+     * @param search_date 検索日付 (YYYY-MM-DD形式)
+     * @returns 録画番組一覧情報 or 録画番組一覧情報の取得に失敗した場合は null
+     */
+    static async fetchVideoTimetable(search_date: string): Promise<IRecordedPrograms | null> {
+
+        // API リクエストを実行
+        const response = await APIClient.get<IRecordedPrograms>('/fork/video/timetable', {
+            params: {
+                search_date,
+            },
+        });
+
+        // エラー処理
+        if (response.type === 'error') {
+            APIClient.showGenericError(response, '番組表データを取得できませんでした。');
+            return null;
+        }
+
+        return response.data;
+    }
 }
 
 export default ForkVideos;

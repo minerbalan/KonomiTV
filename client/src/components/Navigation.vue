@@ -13,6 +13,12 @@
                         <Icon class="navigation__link-icon" icon="fluent:movies-and-tv-20-regular" width="26px" />
                         <span class="navigation__link-text">ビデオ(fork)</span>
                     </router-link>
+                    <!-- Fork: 録画番組番組表ページ -->
+                    <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/fork/videos/timetable"
+                        :class="{'navigation__link--active': $route.path.startsWith('/fork/videos/timetable')}">
+                        <Icon class="navigation__link-icon" icon="fluent:calendar-clock-20-regular" width="26px" />
+                        <span class="navigation__link-text">録画番組表(fork)</span>
+                    </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/timetable/"
                         :class="{'navigation__link--active': $route.path.startsWith('/timetable')}">
                         <Icon class="navigation__link-icon" icon="fluent:calendar-ltr-20-regular" width="26px" />
