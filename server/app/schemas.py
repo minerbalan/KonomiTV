@@ -162,6 +162,10 @@ class RecordedPrograms(BaseModel):
     total: int
     recorded_programs: list[RecordedProgram]
 
+# Fork: 録画番組後続番組取得APIのレスポンス
+class ForkNextProgramResponse(BaseModel):
+    next_program: RecordedProgram | None
+
 # ***** シリーズ *****
 
 class Series(PydanticModel):

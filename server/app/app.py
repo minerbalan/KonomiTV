@@ -42,6 +42,7 @@ from app.routers import (
     VideosRouter,
     VideoStreamsRouter,
     ForkVideoTimetableRouter,
+    ForkVideosRouter,  # Fork: 録画番組自動再生用の後続番組取得API
 )
 from app.streams.LiveStream import LiveStream
 from app.utils.edcb.EDCBTuner import EDCBTuner
@@ -84,6 +85,7 @@ app.include_router(SettingsRouter.router)
 app.include_router(MaintenanceRouter.router)
 app.include_router(VersionRouter.router)
 app.include_router(ForkVideoTimetableRouter.router)
+app.include_router(ForkVideosRouter.router)  # Fork: 録画番組自動再生用の後続番組取得API
 
 # CORS の設定
 ## 開発環境では全てのオリジンからのリクエストを許可
