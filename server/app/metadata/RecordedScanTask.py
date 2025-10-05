@@ -824,11 +824,13 @@ class RecordedScanTask:
                 self._recording_files.pop(file_path, None)
 
                 # DB からレコードを削除
+                # Fork: SQLiteはDELETE文でLIMIT句をサポートしないため、recorded_program_idを取得してから削除
                 db_recorded_video = await RecordedVideo.get_or_none(file_path=str(file_path))
                 if db_recorded_video is not None:
                     # RecordedVideo の親テーブルである RecordedProgram を削除すると、
                     # CASCADE 制約により RecordedVideo も同時に削除される (Channel は親テーブルにあたるため削除されない)
-                    await db_recorded_video.recorded_program.delete()
+                    recorded_program_id = db_recorded_video.recorded_program_id
+                    await RecordedProgram.filter(id=recorded_program_id).delete()
                     logging.info(f'{file_path}: Deleted record for removed file.')
 
             except Exception as ex:
