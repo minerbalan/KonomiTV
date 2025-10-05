@@ -55,6 +55,7 @@ export interface ILocalClientSettings extends IClientSettings {
     video_streaming_quality_cellular: VideoStreamingQuality;
     video_data_saver_mode: boolean;
     video_data_saver_mode_cellular: boolean;
+    video_autoplay_enabled: boolean;  // Fork機能: 動画自動再生設定
     caption_font: string;
     always_border_caption_text: boolean;
     specify_caption_opacity: boolean;
@@ -167,6 +168,10 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     video_data_saver_mode: false,
     // ビデオを通信節約モードで視聴する (モバイル回線時)  (Default: オン) (同期無効)
     video_data_saver_mode_cellular: true,
+
+    // Fork機能: 動画自動再生設定
+    // ビデオ再生終了後に同チャンネルの後続番組を自動再生する (Default: オン)
+    video_autoplay_enabled: true,
 
     // ***** 設定 → 字幕 *****
 

@@ -12,9 +12,16 @@
             <Icon class="watch-navigation__link-icon" icon="fluent:tv-20-regular" width="26px" />
         </router-link>
         <router-link v-ripple class="watch-navigation__link" active-class="watch-navigation__link--active"
-            :class="{'watch-navigation__link--active': $route.path.startsWith('/videos')}"
+            :class="{'watch-navigation__link--active': $route.path.startsWith('/videos') && $route.query.referrer !== 'fork-timetable'}"
             v-ftooltip.right="'ビデオをみる'"  to="/videos/">
             <Icon class="watch-navigation__link-icon" icon="fluent:movies-and-tv-20-regular" width="26px" />
+        </router-link>
+        <!-- Fork: 録画番組表への遷移リンク追加 -->
+        <router-link v-ripple class="watch-navigation__link" active-class="watch-navigation__link--active"
+            :class="{'watch-navigation__link--active': $route.query.referrer === 'fork-timetable'}"
+            v-ftooltip.right="'録画番組表（Fork版）'"
+            :to="$route.query.timetable_date ? `/fork/videos/timetable?date=${$route.query.timetable_date}` : '/fork/videos/timetable'">
+            <Icon class="watch-navigation__link-icon" icon="fluent:grid-20-regular" width="26px" />
         </router-link>
         <router-link v-ripple class="watch-navigation__link" active-class="watch-navigation__link--active"
             :class="{'watch-navigation__link--active': $route.path.startsWith('/timetable')}"

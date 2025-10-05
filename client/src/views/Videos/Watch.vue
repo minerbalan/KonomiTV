@@ -7,6 +7,7 @@ import { mapStores } from 'pinia';
 import { defineComponent } from 'vue';
 
 import Watch from '@/components/Watch/Watch.vue';
+import ForkAutoplay from '@/fork/services/ForkAutoplay';  // Fork機能: 動画自動再生
 import PlayerController from '@/services/player/PlayerController';
 import Videos from '@/services/Videos';
 import usePlayerStore from '@/stores/PlayerStore';
@@ -31,6 +32,11 @@ export default defineComponent({
 
         // 再生セッションを初期化
         this.init();
+
+        // Fork機能: 動画自動再生
+        // ビデオ再生終了イベントのリスナーを登録
+        // thisコンテキストを保持するためbindする
+        this.playerStore.event_emitter.on('VideoEnded', this.forkHandleVideoEnded.bind(this));
     },
     // チャンネル切り替え時に実行
     // コンポーネント（インスタンス）は再利用される
@@ -46,6 +52,10 @@ export default defineComponent({
     },
     // 終了前に実行
     beforeUnmount() {
+
+        // Fork機能: 動画自動再生
+        // ビデオ再生終了イベントのリスナーを解除
+        this.playerStore.event_emitter.off('VideoEnded', this.forkHandleVideoEnded);
 
         // destroy() を実行
         // 別のページへ遷移するため、DPlayer のインスタンスを確実に破棄する
@@ -88,6 +98,38 @@ export default defineComponent({
                 await player_controller.destroy();
                 player_controller = null;
             }
+        },
+
+        // Fork機能: 動画自動再生
+        // ビデオ再生終了時に後続番組を自動再生する
+        async forkHandleVideoEnded() {
+
+            // 自動再生設定が無効な場合は何もしない
+            if (!this.settingsStore.settings.video_autoplay_enabled) {
+                return;
+            }
+
+            // 現在の録画番組IDを取得
+            const current_video_id = this.playerStore.recorded_program.id;
+
+            // 後続番組を取得
+            const next_program = await ForkAutoplay.fetchNextProgram(current_video_id);
+
+            // 後続番組が存在しない、またはエラーの場合は何もしない
+            if (next_program === null) {
+                return;
+            }
+
+            // 現在のURLクエリパラメータを保持
+            // リファラーなどのクエリを維持したまま次の動画に遷移
+            const currentQuery = this.$route.query;
+
+            // 後続番組のページに遷移
+            // beforeRouteUpdateが実行され、既存のセッションが破棄されてから新しいセッションが初期化される
+            this.$router.push({
+                path: `/videos/watch/${next_program.id}`,
+                query: currentQuery,  // クエリパラメータを保持
+            });
         }
     }
 });

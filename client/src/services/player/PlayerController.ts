@@ -1108,6 +1108,15 @@ class PlayerController {
             }
         });
 
+        // Fork機能: ビデオ再生終了時のイベント発火
+        // ビデオ視聴時のみ、動画が最後まで再生されたときにVideoEndedイベントを発火
+        if (this.playback_mode === 'Video') {
+            this.player.on('ended', () => {
+                // PlayerStoreのイベントエミッターを通じてVideoEndedイベントを発火
+                player_store.event_emitter.emit('VideoEnded', {});
+            });
+        }
+
         // 今回 (DPlayer 初期化直後) と画質切り替え開始時の両方のタイミングで実行する必要がある処理
         // mpegts.js などの DPlayer のプラグインは画質切り替え時に一旦破棄されるため、再度イベントハンドラーを登録する必要がある
         const on_init_or_quality_change = async () => {
@@ -1560,6 +1569,7 @@ class PlayerController {
     private setupSettingPanelHandler(): void {
         assert(this.player !== null);
         const player_store = usePlayerStore();
+        const settings_store = useSettingsStore();  // Fork機能: 自動再生設定用に追加
 
         // 設定パネルの開閉を把握するためモンキーパッチを追加し、PlayerStore に通知する
         const original_hide = this.player.setting.hide;
@@ -1615,6 +1625,44 @@ class PlayerController {
                 });
             }
         });
+
+        // Fork機能: ビデオ視聴時のみ、自動再生設定トグルを動的に追加する
+        if (this.playback_mode === 'Video') {
+            this.player.template.settingOriginPanel.insertAdjacentHTML('beforeend', `
+                <div class="dplayer-setting-item dplayer-setting-autoplay">
+                    <span class="dplayer-label">後続番組を自動再生</span>
+                    <div class="dplayer-toggle">
+                        <input class="dplayer-autoplay-setting-input" type="checkbox" name="dplayer-toggle-autoplay">
+                        <label for="dplayer-toggle-autoplay" style="--theme-color:#E64F97"></label>
+                    </div>
+                </div>
+            `);
+
+            // デフォルトのチェック状態を設定値に合わせる
+            const toggle_autoplay_input = this.player.container.querySelector<HTMLInputElement>('.dplayer-autoplay-setting-input')!;
+            toggle_autoplay_input.checked = settings_store.settings.video_autoplay_enabled;
+
+            // 自動再生トグルがクリックされた時のイベントハンドラーを登録
+            const toggle_autoplay_button = this.player.container.querySelector('.dplayer-setting-autoplay')!;
+            toggle_autoplay_button.addEventListener('click', () => {
+                // チェックボックスの状態を切り替える
+                toggle_autoplay_input.checked = !toggle_autoplay_input.checked;
+                // 設定を保存
+                settings_store.settings.video_autoplay_enabled = toggle_autoplay_input.checked;
+                // 通知を表示
+                if (toggle_autoplay_input.checked) {
+                    player_store.event_emitter.emit('SendNotification', {
+                        message: '自動再生を有効にしました。',
+                        duration: 3000,
+                    });
+                } else {
+                    player_store.event_emitter.emit('SendNotification', {
+                        message: '自動再生を無効にしました。',
+                        duration: 3000,
+                    });
+                }
+            });
+        }
 
         // 設定パネルにL字画面のクロップ設定を表示するボタンを動的に追加する
         this.player.template.settingOriginPanel.insertAdjacentHTML('beforeend', `

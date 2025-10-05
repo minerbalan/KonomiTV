@@ -16,6 +16,7 @@
                         :programs="programs"
                         :channels="channels"
                         :isLoading="is_loading"
+                        :initialDate="initialDate"
                         @fetchProgramData="fetchProgramData"
                         @programClick="handleProgramClick" />
                 </div>
@@ -25,8 +26,8 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, ref, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import HeaderBar from '@/components/HeaderBar.vue';
@@ -39,9 +40,23 @@ import { IChannel } from '@/services/Channels';
 import useUserStore from '@/stores/UserStore';
 
 const router = useRouter();
+const route = useRoute();
 
 // ローディング状態
 const is_loading = ref(true);
+
+// URLクエリパラメータから初期日付を取得
+const initialDate = computed(() => {
+    const dateParam = route.query.date as string | undefined;
+    if (dateParam) {
+        const parsed = new Date(dateParam);
+        // 有効な日付かつ未来の日付でないかチェック
+        if (!isNaN(parsed.getTime()) && parsed <= new Date()) {
+            return parsed;
+        }
+    }
+    return undefined;
+});
 
 // 番組データとチャンネルデータ
 const programs = ref<{
@@ -66,8 +81,15 @@ const channels = ref<{ id: string; name: string }[]>([]);
 
 // 番組クリック時の処理
 const handleProgramClick = (program: { id: number }) => {
-    // 動画再生画面に遷移
-    router.push(`/videos/watch/${program.id}`);
+    // 動画再生画面に遷移（リファラー情報と現在の日付を付与）
+    const currentDate = route.query.date as string | undefined;
+    router.push({
+        path: `/videos/watch/${program.id}`,
+        query: {
+            referrer: 'fork-timetable',
+            ...(currentDate && { timetable_date: currentDate })
+        }
+    });
 };
 
 // 番組データを取得する関数
@@ -79,6 +101,11 @@ const fetchProgramData = async (date: Date) => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const search_date = `${year}-${month}-${day}`;
+
+    // URLクエリパラメータを更新（履歴汚染を防ぐためreplaceを使用）
+    router.replace({
+        query: { date: search_date }
+    });
 
     try {
         // API呼び出し

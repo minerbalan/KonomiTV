@@ -53,6 +53,35 @@
                 </div>
             </div>
         </section>
+        <!-- Fork機能: 後続番組情報 -->
+        <section class="program-info" v-if="nextProgram !== null" style="margin-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 20px;">
+            <h2 class="program-info__title" style="font-size: 1.2rem; margin-bottom: 10px;">
+                <Icon icon="fluent:play-circle-16-filled" width="20px" style="margin-bottom: -3px; margin-right: 4px;" />
+                次に再生: {{nextProgram.title}}
+            </h2>
+            <div class="program-info__broadcaster">
+                <img class="program-info__broadcaster-icon"
+                    :src="`${Utils.api_base_url}/channels/${nextProgram.channel?.id ?? 'NID0-SID0'}/logo`"
+                    alt="後続番組のチャンネルロゴ">
+                <div class="program-info__broadcaster-container">
+                    <div class="d-flex align-center" v-if="nextProgram.channel !== null">
+                        <div class="program-info__broadcaster-number">Ch: {{nextProgram.channel.channel_number}}</div>
+                        <div class="program-info__broadcaster-name">{{nextProgram.channel.name}}</div>
+                    </div>
+                    <div class="program-info__broadcaster-time">
+                        {{ProgramUtils.getProgramTime(nextProgram)}}
+                    </div>
+                </div>
+            </div>
+            <div class="program-info__description" style="margin-top: 10px; font-size: 0.9rem; opacity: 0.8;"
+                v-html="ProgramUtils.decorateProgramInfo(nextProgram, 'description')">
+            </div>
+            <!-- Fork機能: 後続番組を今すぐ再生するボタン -->
+            <div v-ripple class="program-info__button program-info__button--play" @click="forkPlayNextProgram">
+                <Icon icon="fluent:play-circle-20-filled" width="20px" height="20px" style="margin-bottom: -1px" />
+                <span style="margin-left: 6px;">今すぐ再生</span>
+            </div>
+        </section>
         <section class="program-detail-container">
             <div class="program-detail" :key="detail_heading"
                 v-for="(detail_text, detail_heading) in playerStore.recorded_program.detail ?? {}">
@@ -67,7 +96,9 @@
 import { mapStores } from 'pinia';
 import { defineComponent } from 'vue';
 
+import ForkAutoplay from '@/fork/services/ForkAutoplay';  // Fork機能: 後続番組取得
 import Message from '@/message';
+import { IRecordedProgram } from '@/services/Videos';  // Fork機能: 後続番組の型
 import usePlayerStore from '@/stores/PlayerStore';
 import useSettingsStore from '@/stores/SettingsStore';
 import Utils, { ProgramUtils } from '@/utils';
@@ -82,6 +113,9 @@ export default defineComponent({
 
             // コメント数カウント
             comment_count: null as number | null,
+
+            // Fork機能: 後続番組情報
+            nextProgram: null as IRecordedProgram | null,
         };
     },
     computed: {
@@ -93,6 +127,23 @@ export default defineComponent({
                 item.type === 'RecordedProgram' && item.id === this.playerStore.recorded_program.id
             );
         },
+    },
+    async created() {
+        // PlayerController 側からCommentReceived イベントで過去ログコメントを受け取り、コメント数を算出する
+        this.playerStore.event_emitter.on('CommentReceived', (event) => {
+            if (event.is_initial_comments === true) {  // 録画では初期コメントしか発生しない
+                this.comment_count = event.comments.length;
+            }
+        });
+
+        // Fork機能: 後続番組情報を取得
+        await this.fetchNextProgram();
+    },
+    watch: {
+        // Fork機能: 録画番組が変更されたら後続番組を再取得
+        'playerStore.recorded_program.id'() {
+            this.fetchNextProgram();
+        }
     },
     methods: {
         // マイリストの追加/削除を切り替える
@@ -113,14 +164,30 @@ export default defineComponent({
                 });
             }
         },
-    },
-    created() {
-        // PlayerController 側からCommentReceived イベントで過去ログコメントを受け取り、コメント数を算出する
-        this.playerStore.event_emitter.on('CommentReceived', (event) => {
-            if (event.is_initial_comments === true) {  // 録画では初期コメントしか発生しない
-                this.comment_count = event.comments.length;
+
+        // Fork機能: 後続番組情報を取得
+        async fetchNextProgram(): Promise<void> {
+            const current_video_id = this.playerStore.recorded_program.id;
+            // 有効なIDでない場合は何もしない（初期値-1やエラー時など）
+            if (current_video_id <= 0) {
+                this.nextProgram = null;
+                return;
             }
-        });
+            // 後続番組を取得
+            this.nextProgram = await ForkAutoplay.fetchNextProgram(current_video_id);
+        },
+
+        // Fork機能: 後続番組を今すぐ再生
+        forkPlayNextProgram(): void {
+            if (this.nextProgram === null) return;
+            // 現在のURLクエリパラメータを保持
+            const currentQuery = this.$route.query;
+            // 後続番組の再生ページに遷移
+            this.$router.push({
+                path: `/videos/watch/${this.nextProgram.id}`,
+                query: currentQuery,  // クエリパラメータを保持
+            });
+        },
     },
     beforeUnmount() {
         // CommentReceived イベントの全てのイベントハンドラーを削除
@@ -266,7 +333,7 @@ export default defineComponent({
             background: rgb(var(--v-theme-background-lighten-1));
             border-radius: 4px;
             user-select: none;
-            transition: color 0.15s ease;
+            transition: color 0.15s ease, background 0.15s ease;
             cursor: pointer;
             @include smartphone-horizontal {
                 font-size: 11.5px;
@@ -274,6 +341,17 @@ export default defineComponent({
 
             &:hover {
                 color: rgb(var(--v-theme-text));
+            }
+
+            // Fork機能: 再生ボタン専用のスタイル
+            &--play {
+                background: rgb(var(--v-theme-primary));
+                color: rgb(var(--v-theme-text));
+                font-weight: 500;
+
+                &:hover {
+                    background: rgb(var(--v-theme-primary-lighten-1));
+                }
             }
         }
     }

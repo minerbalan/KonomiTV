@@ -51,6 +51,9 @@ export type PlayerEvents = {
     PlaybackPositionChanged: {
         playback_position: number;  // 再生位置 (秒)
     }
+    // Fork機能: ビデオ再生終了イベント
+    // ビデオ視聴時に再生が終了したことを通知する
+    VideoEnded: Record<string, never>;
 };
 
 

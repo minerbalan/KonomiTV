@@ -94,6 +94,7 @@ const props = withDefaults(defineProps<{
     programs?: Program[];
     channels?: Channel[];
     isLoading?: boolean;
+    initialDate?: Date; // URLクエリパラメータから復元した初期日付
 }>(), {
     programs: () => [],
     channels: () => [],
@@ -189,7 +190,7 @@ const scrollToTimePeriod = async (period: typeof TIME_PERIODS[number]) => {
 
 // Lifecycle
 onMounted(async () => {
-    displayDate.value = new Date();
+    displayDate.value = props.initialDate || new Date();
     emit('fetchProgramData', displayDate.value);
 
     // 現在時刻を1分ごとに更新
