@@ -23,9 +23,11 @@ from app.metadata.KeyFrameAnalyzer import KeyFrameAnalyzer
 from app.metadata.MetadataAnalyzer import MetadataAnalyzer
 from app.metadata.ThumbnailGenerator import ThumbnailGenerator
 from app.models.Channel import Channel
+from app.models.ForkRecordedVideos import ForkRecordedVideo
 from app.models.RecordedProgram import RecordedProgram
 from app.models.RecordedVideo import RecordedVideo
 from app.utils.DriveIOLimiter import DriveIOLimiter
+from app.utils.JikkyoClient import JikkyoClient
 from app.utils.ProcessLimiter import ProcessLimiter
 
 
@@ -530,6 +532,21 @@ class RecordedScanTask:
                     logging.debug_simple(f'{file_path}: This file is too short. (duration {recorded_program.recorded_video.duration:.1f}s < {self.MINIMUM_RECORDING_SECONDS}s) Skipped.')
                     return
 
+                    # チャンネル情報と録画開始時刻/録画終了時刻の情報がある場合のみ
+                if ((recorded_program.channel is not None) and
+                    (recorded_program.recorded_video.recording_start_time is not None) and
+                    (recorded_program.recorded_video.recording_end_time is not None)):
+                    # ニコニコ実況 過去ログ API から一致する過去ログコメントを取得して返す
+                    jikkyo_client = JikkyoClient(recorded_program.channel.network_id,
+                                                     recorded_program.channel.service_id)
+                    request_comments = await jikkyo_client.fetchJikkyoComments(
+                        recorded_program.recorded_video.recording_start_time,
+                        recorded_program.recorded_video.recording_end_time,
+                    )
+                    fork_recorded_video = schemas.ForkRecordedVideo(comment_count=len(request_comments.comments))
+                    recorded_program.recorded_video.fork_recorded_video = fork_recorded_video
+
+
                 # 前回の DB 取得からメタデータ解析までの間に他のタスクがレコードを作成/更新している可能性があるため、
                 # メタデータ解析後に再度ファイルパスに対応するレコードを取得する
                 existing_db_recorded_video_after_analyze = await RecordedVideo.get_or_none(
@@ -710,6 +727,12 @@ class RecordedScanTask:
             # 「解析したが CM 区間がなかった/検出に失敗した」場合、CMSectionsDetector 側で [] が設定される
             db_recorded_video.cm_sections = None
             await db_recorded_video.save()
+
+            if recorded_program.recorded_video.fork_recorded_video is not None:
+                fork_recorded_video = ForkRecordedVideo()
+                fork_recorded_video.recorded_video = db_recorded_video
+                fork_recorded_video.comment_count = recorded_program.recorded_video.fork_recorded_video.comment_count
+                await fork_recorded_video.save()
 
 
     async def __runBackgroundAnalysis(self, recorded_program: schemas.RecordedProgram) -> None:

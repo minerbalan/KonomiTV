@@ -116,6 +116,10 @@ class RecordedVideo(PydanticModel):
     cm_sections: list[CMSection] | None = None
     created_at: datetime
     updated_at: datetime
+    fork_recorded_video: ForkRecordedVideo | None = None
+
+class ForkRecordedVideo(PydanticModel):
+    comment_count: int = 0
 
 class KeyFrame(TypedDict):
     offset: int

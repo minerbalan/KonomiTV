@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING, cast
 from datetime import datetime
 from typing import Literal, cast
 
@@ -13,6 +14,9 @@ from tortoise.models import Model as TortoiseModel
 
 from app.models.RecordedProgram import RecordedProgram
 from app.schemas import CMSection, KeyFrame
+
+if TYPE_CHECKING:
+    from app.models.ForkRecordedVideos import ForkRecordedVideo
 
 
 class RecordedVideo(TortoiseModel):
@@ -56,6 +60,8 @@ class RecordedVideo(TortoiseModel):
         fields.JSONField(default=None, encoder=lambda x: json.dumps(x, ensure_ascii=False), null=True))  # type: ignore
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
+
+    fork_recorded_video: fields.OneToOneRelation[ForkRecordedVideo]
 
     @property
     def has_key_frames(self) -> bool:

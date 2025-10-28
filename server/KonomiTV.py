@@ -96,7 +96,20 @@ def main(
         else:
             for version_file in migrated:
                 logging.info(f'Successfully migrated to {version_file}.')
+
+    async def ForkUpgradeDatabase():
+        command = Command(tortoise_config=DATABASE_CONFIG, app='fork', location='./app/migrations/')
+        await command.init()
+        migrated = await command.upgrade(run_in_transaction=True)
+        await Tortoise.close_connections()
+        if not migrated:
+            logging.info('No database migration is required.')
+        else:
+            for version_file in migrated:
+                logging.info(f'Successfully migrated to {version_file}.')
+
     asyncio.run(UpgradeDatabase())
+    asyncio.run(ForkUpgradeDatabase())
 
     # ***** サポートされているアーキテクチャかのバリデーション *****
 

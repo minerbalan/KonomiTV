@@ -66,6 +66,8 @@ LIBRARY_PATH = {
 
 # データベース (Tortoise ORM) の設定
 __model_list = [name for _, name, _ in pkgutil.iter_modules(path=['app/models'])]
+# Fork: migrationのバージョンが混合しない様にfork用modelを作成。ただ、モデル自体はmodelsを使用する。
+__fork_model_list = [name for _, name, _ in pkgutil.iter_modules(path=['app/fork/models'])]
 DATABASE_CONFIG = {
     'timezone': 'Asia/Tokyo',
     'connections': {
@@ -74,6 +76,10 @@ DATABASE_CONFIG = {
     'apps': {
         'models': {
             'models': [f'app.models.{name}' for name in __model_list] + ['aerich.models'],
+            'default_connection': 'default',
+        },
+        'fork': {
+            'models': [f'app.models.{name}' for name in __fork_model_list],
             'default_connection': 'default',
         }
     }
