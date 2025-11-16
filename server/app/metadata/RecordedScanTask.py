@@ -729,7 +729,10 @@ class RecordedScanTask:
             await db_recorded_video.save()
 
             if recorded_program.recorded_video.fork_recorded_video is not None:
-                fork_recorded_video = existing_db_recorded_video.fork_recorded_video or ForkRecordedVideo()
+                if existing_db_recorded_video is not None and existing_db_recorded_video.fork_recorded_video is not None:
+                    fork_recorded_video = existing_db_recorded_video.fork_recorded_video
+                else:
+                    fork_recorded_video = ForkRecordedVideo()
                 fork_recorded_video.recorded_video = db_recorded_video
                 fork_recorded_video.comment_count = recorded_program.recorded_video.fork_recorded_video.comment_count
                 await fork_recorded_video.save()
