@@ -551,7 +551,7 @@ class RecordedScanTask:
                 # メタデータ解析後に再度ファイルパスに対応するレコードを取得する
                 existing_db_recorded_video_after_analyze = await RecordedVideo.get_or_none(
                     file_path=str(file_path)
-                ).select_related('recorded_program', 'recorded_program__channel')
+                ).select_related('recorded_program', 'recorded_program__channel', 'fork_recorded_video')
 
                 # 同じファイルパスの既存レコードがあり、先ほど計算した最新のハッシュと変わっていない場合は、レコード内容は更新不要と判断してスキップ
                 ## 万が一前回実行時からファイルサイズや最終更新日時の変更を伴わずに録画が完了した場合に状態を適切に反映できるよう、録画中はスキップしない
@@ -729,11 +729,19 @@ class RecordedScanTask:
             await db_recorded_video.save()
 
             if recorded_program.recorded_video.fork_recorded_video is not None:
-                if existing_db_recorded_video is not None and existing_db_recorded_video.fork_recorded_video is not None:
-                    fork_recorded_video = existing_db_recorded_video.fork_recorded_video
+                existing_fork_recorded_video = None
+                if existing_db_recorded_video is not None:
+                    try:
+                        existing_fork_recorded_video = await existing_db_recorded_video.fork_recorded_video
+                    except Exception:
+                        # リレーションが存在しない場合は None のまま
+                        pass
+
+                if existing_fork_recorded_video is not None:
+                    fork_recorded_video = existing_fork_recorded_video
                 else:
-                    fork_recorded_video = ForkRecordedVideo()
-                    fork_recorded_video.recorded_video = db_recorded_video
+                    fork_recorded_video = ForkRecordedVideo(recorded_video_id=db_recorded_video.id)
+
                 fork_recorded_video.comment_count = recorded_program.recorded_video.fork_recorded_video.comment_count
                 await fork_recorded_video.save()
 
