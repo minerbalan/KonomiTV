@@ -733,7 +733,7 @@ class RecordedScanTask:
                     fork_recorded_video = existing_db_recorded_video.fork_recorded_video
                 else:
                     fork_recorded_video = ForkRecordedVideo()
-                fork_recorded_video.recorded_video = db_recorded_video
+                    fork_recorded_video.recorded_video = db_recorded_video
                 fork_recorded_video.comment_count = recorded_program.recorded_video.fork_recorded_video.comment_count
                 await fork_recorded_video.save()
 
