@@ -24,6 +24,11 @@ async def ConvertRowToRecordedProgram(row: dict[str, Any]) -> schemas.RecordedPr
     cm_sections: list[schemas.CMSection] | None = None
     if row['cm_sections'] is not None:
         cm_sections = json.loads(row['cm_sections'])
+    fork_recorded_video = {}
+    if row['comment_count'] is not None:
+        fork_recorded_video = {
+            'comment_count': int(row['comment_count'])
+        }
 
     # recorded_video のデータを構築
     recorded_video_dict = {
@@ -54,6 +59,7 @@ async def ConvertRowToRecordedProgram(row: dict[str, Any]) -> schemas.RecordedPr
         'cm_sections': cm_sections,
         'created_at': row['created_at'],
         'updated_at': row['updated_at'],
+        'fork_recorded_video': fork_recorded_video
     }
 
     # channel のデータを構築 (channel_id が存在する場合のみ)
@@ -193,10 +199,12 @@ async def VideosTimetableAPI(
             ch.jikkyo_force,
             ch.is_subchannel,
             ch.is_radiochannel,
-            ch.is_watchable
+            ch.is_watchable,
+            frv.comment_count
         FROM recorded_programs rp
         JOIN recorded_videos rv ON rp.id = rv.recorded_program_id
         LEFT JOIN channels ch ON rp.channel_id = ch.id
+        LEFT JOIN fork_recorded_videos frv ON rv.id = frv.recorded_video_id
         WHERE rp.end_time >= ?
         AND rp.start_time < ?
     """
