@@ -37,6 +37,7 @@ export interface IRecordedVideo {
     cm_sections: { start_time: number; end_time: number; }[] | null;
     created_at: string;
     updated_at: string;
+    fork_recorded_video: {comment_count: number} | null;
 }
 
 /** 録画ファイル情報を表すインターフェースのデフォルト値 */
@@ -68,6 +69,7 @@ export const IRecordedVideoDefault: IRecordedVideo = {
     cm_sections: null,
     created_at: '2000-01-01T00:00:00+09:00',
     updated_at: '2000-01-01T00:00:00+09:00',
+    fork_recorded_video: null
 };
 
 /** 録画番組情報を表すインターフェース */

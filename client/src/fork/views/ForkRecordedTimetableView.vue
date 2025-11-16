@@ -37,6 +37,7 @@ import ForkRecordedTimetable from '@/fork/components/ForkRecordedTimetable.vue';
 import ForkVideos from '@/fork/services/ForkVideos';
 import { IRecordedProgram } from '@/fork/services/ForkVideos';
 import { IChannel } from '@/services/Channels';
+import type { Program, Channel } from '@/fork/types/timetable';
 import useUserStore from '@/stores/UserStore';
 
 const router = useRouter();
@@ -59,25 +60,8 @@ const initialDate = computed(() => {
 });
 
 // 番組データとチャンネルデータ
-const programs = ref<{
-    id: number;
-    title: string;
-    subtitle?: string;
-    description?: string;
-    start_time: string;
-    duration: number;
-    channel_id: string;
-    genres?: Array<{ major: string; middle: string }>;
-    detail?: Record<string, string>;
-    recorded_video?: {
-        file_size?: number;
-        duration?: number;
-        video_resolution_width?: number;
-        video_resolution_height?: number;
-        video_codec?: string;
-    };
-}[]>([]);
-const channels = ref<{ id: string; name: string }[]>([]);
+const programs = ref<Program[]>([]);
+const channels = ref<Channel[]>([]);
 
 // 番組クリック時の処理
 const handleProgramClick = (program: { id: number }) => {
@@ -110,9 +94,10 @@ const fetchProgramData = async (date: Date) => {
     try {
         // API呼び出し
         const result = await ForkVideos.fetchVideoTimetable(search_date);
+        console.log(result);
 
         if (result) {
-            // 番組データを変換
+            // 番組データを変換（Fork機能: fork_recorded_videoも含める）
             programs.value = result.recorded_programs.map((program: IRecordedProgram) => ({
                 id: program.id,
                 title: program.title,
@@ -129,6 +114,8 @@ const fetchProgramData = async (date: Date) => {
                     video_resolution_width: program.recorded_video.video_resolution_width,
                     video_resolution_height: program.recorded_video.video_resolution_height,
                     video_codec: program.recorded_video.video_codec,
+                    // Fork機能: コメント数情報を含める
+                    fork_recorded_video: program.recorded_video.fork_recorded_video,
                 } : undefined,
             }));
 
@@ -186,7 +173,7 @@ onMounted(async () => {
     padding: 20px;
     margin: 0 auto;
     min-width: 0;
-    max-width: 1200px; // 番組表なので少し広めに設定
+    // Fork機能: 大画面で番組表を広く使えるようmax-widthを削除
     @include smartphone-horizontal {
         padding: 16px 20px !important;
     }

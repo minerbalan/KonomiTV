@@ -18,6 +18,9 @@ export interface Program {
         video_resolution_width?: number;
         video_resolution_height?: number;
         video_codec?: string;
+        fork_recorded_video?: {
+            comment_count: number;
+        } | null;
     };
 }
 

@@ -225,7 +225,6 @@ onUnmounted(() => {
 
     &__navigation {
         background: rgb(var(--v-theme-background));
-        border-bottom: 1px solid rgb(var(--v-theme-background-lighten-2));
         display: flex;
         gap: 16px;
         padding: 12px 16px;
@@ -242,7 +241,6 @@ onUnmounted(() => {
         display: flex;
         flex-direction: column;
         width: 100%;
-        background: rgb(var(--v-theme-background-lighten-1));
         border-radius: 8px;
         overflow: hidden;
         height: 100%;

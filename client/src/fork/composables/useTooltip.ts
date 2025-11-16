@@ -3,31 +3,14 @@
  */
 
 import { ref, type Ref } from 'vue';
-
-export interface TooltipProgram {
-    id: number;
-    title: string;
-    subtitle?: string;
-    description?: string;
-    start_time: string;
-    duration: number;
-    genres?: Array<{ major: string; middle: string }>;
-    detail?: Record<string, string>;
-    recorded_video?: {
-        file_size?: number;
-        duration?: number;
-        video_resolution_width?: number;
-        video_resolution_height?: number;
-        video_codec?: string;
-    };
-}
+import type { Program } from '@/fork/types/timetable';
 
 /**
  * ツールチップの状態とタイマー管理
  */
 export const useTooltip = (scrollContainer: Ref<HTMLElement | null>) => {
     const tooltipVisible = ref(false);
-    const tooltipProgram = ref<TooltipProgram | null>(null);
+    const tooltipProgram = ref<Program | null>(null);
     const tooltipStyle = ref<Record<string, string>>({});
 
     let hideTooltipTimeout: number | null = null;
@@ -36,7 +19,7 @@ export const useTooltip = (scrollContainer: Ref<HTMLElement | null>) => {
     /**
      * ツールチップを表示（遅延あり）
      */
-    const showTooltip = (program: TooltipProgram, event: MouseEvent) => {
+    const showTooltip = (program: Program, event: MouseEvent) => {
         // 既存の非表示タイマーをキャンセル
         if (hideTooltipTimeout !== null) {
             clearTimeout(hideTooltipTimeout);

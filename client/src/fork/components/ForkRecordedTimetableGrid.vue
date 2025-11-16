@@ -42,8 +42,19 @@
                         @mouseenter="showTooltip(program, $event)"
                         @mouseleave="hideTooltip">
                         <div class="fork-recorded-timetable__program-content">
-                            <div class="fork-recorded-timetable__program-minutes">
-                                {{ formatMinutesOnly(program.start_time) }}
+                            <!-- Fork機能: 左側カラム（分数表示とコメント数） -->
+                            <div class="fork-recorded-timetable__program-left">
+                                <div class="fork-recorded-timetable__program-minutes">
+                                    {{ formatMinutesOnly(program.start_time) }}
+                                </div>
+                                <!-- Fork機能: 分間コメント数バッジ（コメント数がある場合のみ表示） -->
+                                <div
+                                    v-if="getCommentsPerMinute(program) > 0"
+                                    class="fork-recorded-timetable__program-comments">
+                                    <div class="fork-recorded-timetable__program-comments-icon">⚡</div>
+                                    <div class="fork-recorded-timetable__program-comments-value">{{ getCommentsPerMinute(program) }}</div>
+                                    <div class="fork-recorded-timetable__program-comments-unit">/分</div>
+                                </div>
                             </div>
                             <div class="fork-recorded-timetable__program-info">
                                 <div class="fork-recorded-timetable__program-title">
@@ -75,6 +86,25 @@
             <div class="fork-recorded-timetable__tooltip-time">
                 {{ formatTimeRange(tooltipProgram?.start_time, tooltipProgram?.duration) }}
             </div>
+
+            <!-- Fork機能: コメント情報（番組時間の直下に配置・コンパクトデザイン） -->
+            <div
+                v-if="tooltipProgram?.recorded_video?.fork_recorded_video?.comment_count"
+                class="fork-recorded-timetable__tooltip-comment-compact">
+                <div class="fork-recorded-timetable__tooltip-comment-badge">
+                    <span class="fork-recorded-timetable__tooltip-comment-icon">💬</span>
+                    <span class="fork-recorded-timetable__tooltip-comment-total">
+                        {{ formatCommentCount(tooltipProgram.recorded_video.fork_recorded_video.comment_count) }}件
+                    </span>
+                </div>
+                <div class="fork-recorded-timetable__tooltip-comment-rate">
+                    <span class="fork-recorded-timetable__tooltip-comment-rate-icon">⚡</span>
+                    <span class="fork-recorded-timetable__tooltip-comment-rate-value">
+                        {{ getCommentsPerMinute(tooltipProgram) }}/分
+                    </span>
+                </div>
+            </div>
+
             <div class="fork-recorded-timetable__tooltip-title">
                 {{ tooltipProgram?.title }}
             </div>
@@ -147,6 +177,7 @@ import { useTooltip } from '@/fork/composables/useTooltip';
 import { TIME_LABEL_HEIGHT, CHANNEL_HEADER_HEIGHT, TIME_COLUMN_WIDTH } from '@/fork/constants/timetable';
 import { formatMinutesOnly, formatTimeRange } from '@/fork/utils/dateFormat';
 import { formatDuration, formatFileSize } from '@/fork/utils/formatters';
+import { forkCalculateCommentsPerMinute, forkFormatCommentCount } from '@/fork/utils/forkCommentUtils';
 import { getProgramStyle as calculateProgramStyle, calculateCurrentTimePosition } from '@/fork/utils/programLayout';
 
 interface Props {
@@ -178,10 +209,11 @@ const {
     onTooltipMouseLeave
 } = useTooltip(scrollContainer);
 
-// Grid列の構成を計算
+// Grid列の構成を計算（Fork機能: チャンネル列に最大幅を設定）
 const gridTemplateColumns = computed(() => {
     const channelCount = props.channels.length;
-    return `${TIME_COLUMN_WIDTH}px repeat(${channelCount}, 1fr)`;
+    // 各チャンネル列は最小150px、最大320pxで自動調整
+    return `${TIME_COLUMN_WIDTH}px repeat(${channelCount}, minmax(150px, 200px))`;
 });
 
 // チャンネル別の番組リストを取得
@@ -218,6 +250,23 @@ const getCurrentTimeLineStyle = (): Record<string, string | number> => {
         gridRow: 2,
         pointerEvents: 'none'
     };
+};
+
+// Fork機能: 分間コメント数を取得
+const getCommentsPerMinute = (program: Program): number => {
+    const commentCount = program.recorded_video?.fork_recorded_video?.comment_count;
+    const duration = program.recorded_video?.duration;
+
+    if (!commentCount || !duration) {
+        return 0;
+    }
+
+    return forkCalculateCommentsPerMinute(commentCount, duration);
+};
+
+// Fork機能: コメント数をフォーマット
+const formatCommentCount = (count: number): string => {
+    return forkFormatCommentCount(count);
 };
 
 // 外部から呼び出し可能な関数をexposeする
@@ -295,13 +344,19 @@ onMounted(() => {
     position: relative;
     height: calc(100vh - 180px);
     min-height: 0;
+    // Fork機能: グリッドを中央寄せするためflex配置
+    display: flex;
+    justify-content: center;
 }
 
 .fork-recorded-timetable__grid-container {
     display: grid;
     position: relative;
-    width: 100%;
+    // Fork機能: グリッド幅を内容に合わせて自動調整
+    width: fit-content;
     grid-template-rows: auto 1fr;
+    background: rgb(var(--v-theme-background-lighten-1));
+    border: 1px solid rgb(var(--v-theme-background-lighten-2));
 }
 
 .fork-recorded-timetable__time-column {
@@ -402,6 +457,14 @@ onMounted(() => {
     min-height: 35px;
 }
 
+// Fork機能: 左側カラム（分数表示とコメント数を縦並び）
+.fork-recorded-timetable__program-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 .fork-recorded-timetable__program-minutes {
     font-size: 14px;
     font-weight: 700;
@@ -410,7 +473,6 @@ onMounted(() => {
     padding: 2px 6px;
     border-radius: 4px;
     line-height: 1;
-    flex-shrink: 0;
     border: 1px solid rgba(var(--v-theme-primary), 0.2);
 }
 
@@ -451,6 +513,56 @@ onMounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     word-wrap: break-word;
+}
+
+// Fork機能: 分間コメント数バッジ（縦長デザイン）
+.fork-recorded-timetable__program-comments {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgb(var(--v-theme-secondary));
+    background: rgba(var(--v-theme-secondary), 0.1);
+    padding: 3px 4px;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--v-theme-secondary), 0.2);
+    gap: 1px;
+    min-width: 32px;
+
+    @include smartphone-vertical {
+        padding: 2px 3px;
+        min-width: 28px;
+    }
+}
+
+.fork-recorded-timetable__program-comments-icon {
+    font-size: 12px;
+    line-height: 1;
+
+    @include smartphone-vertical {
+        font-size: 11px;
+    }
+}
+
+.fork-recorded-timetable__program-comments-value {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+
+    @include smartphone-vertical {
+        font-size: 10px;
+    }
+}
+
+.fork-recorded-timetable__program-comments-unit {
+    font-size: 7px;
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0.8;
+
+    @include smartphone-vertical {
+        font-size: 6px;
+    }
 }
 
 .fork-recorded-timetable__current-time-line {
@@ -592,6 +704,82 @@ onMounted(() => {
 
 .fork-recorded-timetable__tooltip-video-info {
     margin-bottom: 12px;
+}
+
+// Fork機能: コメント情報セクション（コンパクトデザイン）
+.fork-recorded-timetable__tooltip-comment-compact {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.fork-recorded-timetable__tooltip-comment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.15), rgba(var(--v-theme-secondary), 0.08));
+    border: 1.5px solid rgba(var(--v-theme-secondary), 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--v-theme-secondary));
+    box-shadow: 0 2px 4px rgba(var(--v-theme-secondary), 0.1);
+
+    @include smartphone-vertical {
+        font-size: 12px;
+        padding: 5px 10px;
+        gap: 5px;
+    }
+}
+
+.fork-recorded-timetable__tooltip-comment-icon {
+    font-size: 15px;
+    line-height: 1;
+
+    @include smartphone-vertical {
+        font-size: 14px;
+    }
+}
+
+.fork-recorded-timetable__tooltip-comment-total {
+    line-height: 1;
+    letter-spacing: 0.3px;
+}
+
+.fork-recorded-timetable__tooltip-comment-rate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, rgba(var(--v-theme-warning), 0.15), rgba(var(--v-theme-warning), 0.08));
+    border: 1.5px solid rgba(var(--v-theme-warning), 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--v-theme-warning));
+    box-shadow: 0 2px 4px rgba(var(--v-theme-warning), 0.1);
+
+    @include smartphone-vertical {
+        font-size: 12px;
+        padding: 5px 10px;
+        gap: 5px;
+    }
+}
+
+.fork-recorded-timetable__tooltip-comment-rate-icon {
+    font-size: 15px;
+    line-height: 1;
+
+    @include smartphone-vertical {
+        font-size: 14px;
+    }
+}
+
+.fork-recorded-timetable__tooltip-comment-rate-value {
+    line-height: 1;
+    letter-spacing: 0.3px;
 }
 
 .fork-recorded-timetable__tooltip-info-grid {
