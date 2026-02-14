@@ -13,7 +13,7 @@ from tortoise.fields import Field as TortoiseField
 from tortoise.models import Model as TortoiseModel
 
 from app.models.RecordedProgram import RecordedProgram
-from app.schemas import CMSection, KeyFrame
+from app.schemas import CMSection, KeyFrame, ThumbnailInfo
 
 if TYPE_CHECKING:
     from app.models.ForkRecordedVideos import ForkRecordedVideo
@@ -25,12 +25,11 @@ class RecordedVideo(TortoiseModel):
     class Meta(TortoiseModel.Meta):
         table: str = 'recorded_videos'
 
-    # テーブル設計は Notion を参照のこと
     id = fields.IntField(pk=True)
     recorded_program: fields.OneToOneRelation[RecordedProgram] = \
         fields.OneToOneField('models.RecordedProgram', related_name='recorded_video', on_delete=fields.CASCADE)
     recorded_program_id: int
-    status = cast(TortoiseField[Literal['Recording', 'Recorded']], fields.CharField(255))
+    status = cast(TortoiseField[Literal['Recording', 'Recorded', 'AnalysisFailed']], fields.CharField(255))
     file_path = fields.TextField()  # ファイルパスは可変長だが、TextField には unique 制約が付けられない
     file_hash = fields.TextField()
     file_size = fields.IntField()
@@ -42,7 +41,7 @@ class RecordedVideo(TortoiseModel):
     container_format = cast(TortoiseField[Literal['MPEG-TS', 'MPEG-4']], fields.CharField(255))
     video_codec = cast(TortoiseField[Literal['MPEG-2', 'H.264', 'H.265']], fields.CharField(255))
     # プロファイルは他にも多くあるが、現実的に使われそうなものだけを列挙
-    video_codec_profile = cast(TortoiseField[Literal['High', 'High 10', 'Main', 'Main 10', 'Baseline']], fields.CharField(255))
+    video_codec_profile = cast(TortoiseField[Literal['High', 'High 10', 'Main', 'Main 10', 'Baseline', 'Constrained Baseline']], fields.CharField(255))
     video_scan_type = cast(TortoiseField[Literal['Interlaced', 'Progressive']], fields.CharField(255))
     video_frame_rate = fields.FloatField()
     video_resolution_width = fields.IntField()
@@ -57,6 +56,9 @@ class RecordedVideo(TortoiseModel):
         fields.JSONField(default=[], encoder=lambda x: json.dumps(x, ensure_ascii=False)))  # type: ignore
     cm_sections = cast(TortoiseField[list[CMSection] | None],
         # None は未解析状態を表す ([] は解析したが CM 区間がなかった/検出に失敗したことを表す)
+        fields.JSONField(default=None, encoder=lambda x: json.dumps(x, ensure_ascii=False), null=True))  # type: ignore
+    thumbnail_info = cast(TortoiseField[ThumbnailInfo | None],
+        # None はサムネイル未生成か、旧仕様から移行しきれていないことを表す
         fields.JSONField(default=None, encoder=lambda x: json.dumps(x, ensure_ascii=False), null=True))  # type: ignore
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

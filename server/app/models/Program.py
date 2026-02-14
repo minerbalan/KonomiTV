@@ -10,7 +10,6 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Any, cast
-from zoneinfo import ZoneInfo
 
 import ariblib.constants
 import httpx
@@ -20,7 +19,7 @@ from tortoise.models import Model as TortoiseModel
 
 from app import logging
 from app.config import Config, LoadConfig
-from app.constants import DATABASE_CONFIG, HTTPX_CLIENT
+from app.constants import DATABASE_CONFIG, HTTPX_CLIENT, JST
 from app.models.Channel import Channel
 from app.schemas import Genre
 from app.utils import GetMirakurunAPIEndpointURL
@@ -35,7 +34,6 @@ class Program(TortoiseModel):
     class Meta(TortoiseModel.Meta):
         table: str = 'programs'
 
-    # テーブル設計は Notion を参照のこと
     id = fields.CharField(255, pk=True)
     channel: fields.ForeignKeyRelation[Channel] = \
         fields.ForeignKeyField('models.Channel', related_name='programs', index=True, on_delete=fields.CASCADE)
@@ -177,7 +175,7 @@ class Program(TortoiseModel):
             """
 
             # タイムゾーンを UTC+9（日本時間）に指定する
-            return datetime.fromtimestamp(millisecond / 1000, tz=ZoneInfo('Asia/Tokyo'))
+            return datetime.fromtimestamp(millisecond / 1000, tz=JST)
 
         # マルチプロセス時は既存のコネクションが使えないため、Tortoise ORM を初期化し直す
         # ref: https://tortoise-orm.readthedocs.io/en/latest/setup.html
@@ -271,8 +269,8 @@ class Program(TortoiseModel):
                     start_time = MillisecondToDatetime(program_info['startAt'])
                     end_time = MillisecondToDatetime(program_info['startAt'] + program_info['duration'])
 
-                    # 番組終了時刻が現在時刻より1時間以上前な番組を弾く
-                    if datetime.now(ZoneInfo('Asia/Tokyo')) - end_time > timedelta(hours=1):
+                    # 番組終了時刻が現在時刻より12時間以上前な番組を弾く
+                    if datetime.now(JST) - end_time > timedelta(hours=12):
                         continue
 
                     # ***** ここからは 追加・更新・更新不要 のいずれか *****
@@ -426,9 +424,9 @@ class Program(TortoiseModel):
 
                     # 番組情報をデータベースに保存する
                     if duplicate_program is None:
-                        logging.debug_simple(f'Add Program: {program.id}')
+                        logging.debug(f'Add Program: {program.id}')
                     else:
-                        logging.debug_simple(f'Update Program: {program.id}')
+                        logging.debug(f'Update Program: {program.id}')
 
                     ## マルチプロセス実行時は、まれに保存する際にメインプロセスにデータベースがロックされている事がある
                     ## 3秒待ってから再試行し、それでも失敗した場合はスキップ
@@ -444,7 +442,7 @@ class Program(TortoiseModel):
                 # この時点で残存している番組情報は放送が終わって EPG から削除された番組なので、まとめて削除する
                 # ここで削除しないと終了した番組の情報が幽霊のように残り続ける事になり、結果 DB が肥大化して遅くなってしまう
                 for duplicate_program in duplicate_programs.values():
-                    logging.debug_simple(f'Delete Program: {duplicate_program.id}')
+                    logging.debug(f'Delete Program: {duplicate_program.id}')
                     try:
                         await duplicate_program.delete()
                     except exceptions.OperationalError:
@@ -569,14 +567,14 @@ class Program(TortoiseModel):
 
                         # 番組開始時刻
                         ## 万が一取得できなかった場合は 1970/1/1 9:00 とする
-                        start_time = event_info.get('start_time', datetime(1970, 1, 1, 9, tzinfo=ZoneInfo('Asia/Tokyo')))
+                        start_time = event_info.get('start_time', datetime(1970, 1, 1, 9, tzinfo=JST))
 
                         # 番組終了時刻
                         ## 終了時間未定の場合、とりあえず5分とする
                         end_time = start_time + timedelta(seconds=event_info.get('duration_sec', 300))
 
-                        # 番組終了時刻が現在時刻より1時間以上前な番組を弾く
-                        if datetime.now(CtrlCmdUtil.TZ) - end_time > timedelta(hours=1):
+                        # 番組終了時刻が現在時刻より12時間以上前な番組を弾く
+                        if datetime.now(CtrlCmdUtil.TZ) - end_time > timedelta(hours=12):
                             continue
 
                         # ***** ここからは 追加・更新・更新不要 のいずれか *****
@@ -712,9 +710,9 @@ class Program(TortoiseModel):
 
                         # 番組情報をデータベースに保存する
                         if duplicate_program is None:
-                            logging.debug_simple(f'Add Program: {program.id}')
+                            logging.debug(f'Add Program: {program.id}')
                         else:
-                            logging.debug_simple(f'Update Program: {program.id}')
+                            logging.debug(f'Update Program: {program.id}')
 
                         ## マルチプロセス実行時は、まれに保存する際にメインプロセスにデータベースがロックされている事がある
                         ## 3秒待ってから再試行し、それでも失敗した場合はスキップ
@@ -730,7 +728,7 @@ class Program(TortoiseModel):
                 # この時点で残存している番組情報は放送が終わって EPG から削除された番組なので、まとめて削除する
                 # ここで削除しないと終了した番組の情報が幽霊のように残り続ける事になり、結果 DB が肥大化して遅くなってしまう
                 for duplicate_program in duplicate_programs.values():
-                    logging.debug_simple(f'Delete Program: {duplicate_program.id}')
+                    logging.debug(f'Delete Program: {duplicate_program.id}')
                     try:
                         await duplicate_program.delete()
                     except exceptions.OperationalError:

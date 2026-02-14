@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from io import BufferedReader, BytesIO
 from pathlib import Path
 from typing import Any, Literal, cast
-from zoneinfo import ZoneInfo
 
 import ariblib
 import ariblib.event
@@ -20,12 +19,14 @@ from ariblib.sections import (
     ActualStreamPresentFollowingEventInformationSection,
     ActualStreamServiceDescriptionSection,
     ProgramAssociationSection,
+    ProgramMapSection,
     TimeOffsetSection,
 )
 from biim.mpeg2ts import ts
 
 from app import logging, schemas
-from app.utils import ClosestMultiple
+from app.constants import JST
+from app.utils import ClosestMultiple, NormalizeToJSTDatetime
 from app.utils.TSInformation import TSInformation
 
 
@@ -35,13 +36,19 @@ class TSInfoAnalyzer:
     ariblib の開発者の youzaka 氏に感謝します
     """
 
-    def __init__(self, recorded_video: schemas.RecordedVideo, end_ts_offset: int | None = None) -> None:
+    def __init__(
+        self,
+        recorded_video: schemas.RecordedVideo,
+        end_ts_offset: int | None = None,
+        preferred_service_id: int | None = None,
+    ) -> None:
         """
         録画 TS ファイルや録画データ関連ファイルに含まれる番組情報を解析するクラスを初期化する
 
         Args:
             recorded_video (schemas.RecordedVideo): 録画ファイル情報を表すモデル
             end_ts_offset (int | None): 有効な TS データの終了位置 (バイト単位、ファイル後半がゼロ埋めされている場合に指定する)
+            preferred_service_id (int | None): 優先的に使用する service_id (FFprobe などの外部解析結果から得られた値)
         """
 
         # 有効な TS データの終了位置 (EIT 解析時に必要)
@@ -54,6 +61,9 @@ class TSInfoAnalyzer:
         self.recorded_video = recorded_video
         self.first_tot_timedelta = timedelta()
         self.last_tot_timedelta = timedelta()
+
+        # 優先的に使用する service_id (外部から指定された場合)
+        self.preferred_service_id = preferred_service_id
 
         # 録画ファイルが MPEG-TS 形式の場合
         if self.recorded_video.container_format == 'MPEG-TS':
@@ -110,7 +120,7 @@ class TSInfoAnalyzer:
                         return True
 
                     # PAT, NIT, SDT, TOT, EIT を取り出す
-                    if not TSInfoAnalyzer.readPSIData(f, [0x00, 0x10, 0x11, 0x14, 0x12, 0x26, 0x27], callback):
+                    if not self.__readPSIData(f, [0x00, 0x10, 0x11, 0x14, 0x12, 0x26, 0x27], callback):
                         logging.warning(f'{psc_path}: File contents may be invalid.')
                     if last_tot_time_sec is not None:
                         self.last_tot_timedelta = timedelta(seconds = last_time_sec - last_tot_time_sec)
@@ -239,7 +249,7 @@ class TSInfoAnalyzer:
                                         if (first_pcr_sec is not None) and (pcr_at_section_start_sec is not None):
                                             elapsed = max(float(pcr_at_section_start_sec) - float(first_pcr_sec), 0.0)
                                             assert section.JST_time is not None
-                                            jst_time = section.JST_time.replace(tzinfo=ZoneInfo('Asia/Tokyo'))
+                                            jst_time = NormalizeToJSTDatetime(section.JST_time)
                                             recording_start_time = jst_time - timedelta(seconds=elapsed)
                                             recording_end_time = recording_start_time + timedelta(seconds=self.recorded_video.duration)
                                             return (recording_start_time, recording_end_time)
@@ -267,7 +277,7 @@ class TSInfoAnalyzer:
                             else:
                                 elapsed = max(float(pcr_at_section_start_sec) - float(first_pcr_sec), 0.0)
                                 assert section.JST_time is not None
-                                jst_time = section.JST_time.replace(tzinfo=ZoneInfo('Asia/Tokyo'))
+                                jst_time = NormalizeToJSTDatetime(section.JST_time)
                                 recording_start_time = jst_time - timedelta(seconds=elapsed)
                                 recording_end_time = recording_start_time + timedelta(seconds=self.recorded_video.duration)
                                 return (recording_start_time, recording_end_time)
@@ -275,7 +285,7 @@ class TSInfoAnalyzer:
                         pass
 
             except Exception as ex:
-                logging.warning(f'{self.recorded_video.file_path}: Failed to analyze TOT from TS.', exc_info=ex)
+                logging.warning(f'{self.recorded_video.file_path}: Failed to analyze TOT from TS:', exc_info=ex)
                 return None
 
             return None
@@ -290,8 +300,8 @@ class TSInfoAnalyzer:
             last_tot_time: datetime | None = None
             for tot in self.ts.sections(TimeOffsetSection):
                 if first_tot_time is None:
-                    first_tot_time = tot.JST_time.replace(tzinfo=ZoneInfo('Asia/Tokyo'))
-                last_tot_time = tot.JST_time.replace(tzinfo=ZoneInfo('Asia/Tokyo'))
+                    first_tot_time = NormalizeToJSTDatetime(tot.JST_time)
+                last_tot_time = NormalizeToJSTDatetime(tot.JST_time)
 
             if first_tot_time is None or last_tot_time is None:
                 return None
@@ -320,26 +330,48 @@ class TSInfoAnalyzer:
         remocon_id: int | None = None
 
         # PAT (Program Association Table) からサービス ID が取得できるまで繰り返し処理
+        service_id_order: list[int] = []
+        service_pmt_pid_map: dict[int, int] = {}
         for pat in self.ts.sections(ProgramAssociationSection):
             # トランスポートストリーム ID (TSID) を取得
             transport_stream_id = int(pat.transport_stream_id)
 
-            # サービス ID を取得
+            # サービス ID と PMT PID を取得
+            ## program_number は service_id と等しい
             for pat_pid in pat.pids:
                 if pat_pid.program_number:
-                    # program_number は service_id と等しい
-                    # PAT から抽出した service_id を使えば、映像や音声が存在するストリームの番組情報を的確に抽出できる
                     service_id = int(pat_pid.program_number)
-                    # 他にも pid があるかもしれないが（複数のチャンネルが同じストリームに含まれている場合など）、最初の pid のみを取得する
-                    break
+                    service_id_order.append(service_id)
+                    service_pmt_pid_map[service_id] = int(pat_pid.program_map_PID)
 
-            # service_id が見つかったらループを抜ける
-            if service_id is not None:
+            # 最初に見つかった PAT を使う
+            if len(service_id_order) > 0:
                 break
 
-        if service_id is None:
+        if len(service_id_order) == 0:
             logging.warning(f'{self.recorded_video.file_path}: service_id not found.')
             return None
+
+        # 外部から preferred_service_id が指定されていて、PAT に含まれている場合はそれを優先的に使用
+        ## FFprobe などで実際にストリームが存在する service_id が事前に判明している場合に使用される
+        if self.preferred_service_id is not None and self.preferred_service_id in service_id_order:
+            service_id = self.preferred_service_id
+            logging.debug(
+                f'{self.recorded_video.file_path}: Using preferred service_id {service_id} from external analysis.'
+            )
+        # 複数サービスが存在する場合は、映像・音声 PID の出現頻度から正しい service_id を推定する
+        elif len(service_id_order) > 1:
+            selected_service_id = self.__selectServiceIdByPidFrequency(
+                service_id_order = service_id_order,
+                service_pmt_pid_map = service_pmt_pid_map,
+            )
+            if selected_service_id is not None:
+                service_id = selected_service_id
+            else:
+                # 推定できなかった場合は、PAT に最初に出現した service_id を採用する
+                service_id = service_id_order[0]
+        else:
+            service_id = service_id_order[0]
 
         # TS から SDT (Service Description Table) を抽出
         for sdt in self.ts.sections(ActualStreamServiceDescriptionSection):
@@ -494,6 +526,12 @@ class TSInfoAnalyzer:
             # section_number と service_id が一致したときだけ
             # サービス ID が必要な理由は、CS などで同じトランスポートストリームに含まれる別チャンネルの番組情報になることを防ぐため
             if eit.section_number == eit_section_number and eit.service_id == channel.service_id:
+                # TSID / ONID も一致する場合のみ採用する
+                ## EIT は service_id だけでなく TSID / ONID も持つため、誤検出を避けるため一致条件に含める
+                if channel.transport_stream_id is not None and eit.transport_stream_id != channel.transport_stream_id:
+                    continue
+                if channel.network_id is not None and eit.original_network_id != channel.network_id:
+                    continue
 
                 # EIT から得られる各種 Descriptor 内の情報を取得
                 # ariblib.event が各種 Descriptor のラッパーになっていたのでそれを利用
@@ -505,7 +543,7 @@ class TSInfoAnalyzer:
                         # 破損したイベントをスキップ
                         corrupted_events += 1
                         if corrupted_events <= 20:  # 20個までは許容
-                            logging.debug_simple(f'{self.recorded_video.file_path}: Skipped corrupted event #{corrupted_events}:', exc_info=ex)
+                            logging.debug(f'{self.recorded_video.file_path}: Skipped corrupted event #{corrupted_events}:', exc_info=ex)
                             continue
                         else:
                             # 破損イベントが多すぎる場合は諦める
@@ -518,7 +556,7 @@ class TSInfoAnalyzer:
                     ## 番組開始時刻 (タイムゾーンを日本時間 (+9:00) に設定)
                     ## 注意: present の duration が None (終了時間未定) の場合のみ、following の start_time が None になることがある
                     if event.start_time is not None:
-                        start_time = cast(datetime, event.start_time).astimezone(ZoneInfo('Asia/Tokyo'))
+                        start_time = NormalizeToJSTDatetime(cast(datetime, event.start_time))
                     ## 番組長 (秒)
                     ## 注意: 臨時ニュースなどで放送時間未定の場合は None になる
                     if event.duration is not None:
@@ -668,8 +706,8 @@ class TSInfoAnalyzer:
         ## 録画ファイルが短すぎて EIT のパースに失敗した場合のみ
         ## 番組情報としては全く使い物にならないし、基本現在の番組情報を使わせるようにしたいので、後続の処理で使われないような値を設定する
         if start_time is None and end_time is None:
-            start_time = datetime(1970, 1, 1, 9, tzinfo=ZoneInfo('Asia/Tokyo'))
-            end_time = datetime(1970, 1, 1, 9, tzinfo=ZoneInfo('Asia/Tokyo'))
+            start_time = datetime(1970, 1, 1, 9, tzinfo=JST)
+            end_time = datetime(1970, 1, 1, 9, tzinfo=JST)
             duration = 0.0
 
         # 番組開始時刻が取得できないが番組終了時刻のみ取得できる状況は仕様上発生し得ない
@@ -699,8 +737,8 @@ class TSInfoAnalyzer:
             duration = duration,
             # 必須フィールドのため作成日時・更新日時は適当に現在時刻を入れている
             # この値は参照されず、DB の値は別途自動生成される
-            created_at = datetime.now(tz=ZoneInfo('Asia/Tokyo')),
-            updated_at = datetime.now(tz=ZoneInfo('Asia/Tokyo')),
+            created_at = datetime.now(tz=JST),
+            updated_at = datetime.now(tz=JST),
         )
 
         # 以下のフィールドは、対応するデータを取得できなかった場合に Pydantic モデルに設定されているデフォルト値が使われる
@@ -725,8 +763,157 @@ class TSInfoAnalyzer:
         return recorded_program
 
 
-    @staticmethod
-    def readPSIData(reader: BufferedReader, target_pids: list[int], callback: Callable[[float, int, bytes], bool]) -> bool:
+    def __selectServiceIdByPidFrequency(
+        self,
+        service_id_order: list[int],
+        service_pmt_pid_map: dict[int, int],
+    ) -> int | None:
+        """
+        PAT と PMT から得られる PID 情報と TS 内の PID 出現頻度を突き合わせて、
+        映像・音声 PID が実在する service_id を推定する
+
+        Args:
+            service_id_order (list[int]): PAT に登場した順序で並んだ service_id のリスト
+            service_pmt_pid_map (dict[int, int]): service_id と PMT PID の対応表
+
+        Returns:
+            int | None: 推定された service_id（推定できない場合は None）
+        """
+
+        # MPEG-TS 以外では実データを確認できないため推定しない
+        if self.recorded_video.container_format != 'MPEG-TS':
+            return None
+
+        # PMT から映像・音声 PID を取得
+        ## ariblib の ProgramMapSection は _pids クラス属性がデフォルトで定義されていないため、
+        ## 動的に追加してから sections() メソッドを使用する
+        service_pid_map: dict[int, dict[str, set[int]]] = {}
+
+        # ファイルの 20% 位置にシークしてから PMT を解析する
+        ## Mirakurun/mirakc では録画開始直後はサービス分離が完了しておらず、古い PMT 情報が含まれている場合がある
+        ## ファイルの 20% 位置であれば、サービス分離が完了した後の正しい PMT を取得できる可能性が高い
+        ## ariblib の sections() メソッドは内部キャッシュを持っておりシーク位置を尊重しないため、
+        ## 新しいファイルハンドルを開いて 20% 位置から読み込む必要がある
+        effective_size = min(self.end_ts_offset, self.recorded_video.file_size)
+        pmt_seek_offset = ClosestMultiple(int(effective_size * 0.2), ts.PACKET_SIZE)
+
+        # ProgramMapSection._pids が存在しない場合は空リストで初期化
+        if not hasattr(ProgramMapSection, '_pids'):
+            ProgramMapSection._pids = []  # type: ignore[attr-defined]
+        original_pmt_pids = ProgramMapSection._pids  # type: ignore[attr-defined]
+        pmt_pids_to_use = list(service_pmt_pid_map.values())
+        ProgramMapSection._pids = pmt_pids_to_use  # type: ignore[attr-defined]
+        try:
+            # 20% 位置から始まる新しいファイルハンドルを開いて PMT を解析
+            ## サービス分離済みのファイルでは特定のサービスの PMT しか存在しないため、
+            ## 一定回数 PMT を確認したら終了する
+            with ariblib.tsopen(self.recorded_video.file_path, chunk=1000) as pmt_ts:
+                pmt_ts.seek(pmt_seek_offset)
+                pmt_check_count = 0
+                max_pmt_checks = len(service_pmt_pid_map) * 3  # 各サービスにつき最大3回のチェック
+                for pmt in pmt_ts.sections(ProgramMapSection):
+                    pmt_check_count += 1
+                    service_id = int(pmt.program_number)
+                    if service_id not in service_pmt_pid_map:
+                        continue
+                    # 既にこのサービスの PMT を取得済みならスキップ
+                    if service_id in service_pid_map:
+                        # すべてのサービスを確認済みか、一定回数チェックしたら終了
+                        if len(service_pid_map) == len(service_pmt_pid_map) or pmt_check_count >= max_pmt_checks:
+                            break
+                        continue
+                    video_pids = {int(p) for p in pmt.video_pids()}
+                    audio_pids = {int(p) for p in pmt.audio_pids()}
+                    if len(video_pids) == 0 and len(audio_pids) == 0:
+                        continue
+                    service_pid_map[service_id] = {
+                        'video_pids': video_pids,
+                        'audio_pids': audio_pids,
+                    }
+                    # すべてのサービスを確認済みか、一定回数チェックしたら終了
+                    if len(service_pid_map) == len(service_pmt_pid_map) or pmt_check_count >= max_pmt_checks:
+                        break
+        finally:
+            ProgramMapSection._pids = original_pmt_pids  # type: ignore[attr-defined]
+
+        if len(service_pid_map) == 0:
+            return None
+
+        # TS 内の PID 出現頻度を取得
+        try:
+            file_path = Path(self.recorded_video.file_path)
+            effective_size = min(self.end_ts_offset, self.recorded_video.file_size)
+            if effective_size < ts.PACKET_SIZE * 100:
+                return None
+            sample_offset = ClosestMultiple(int(effective_size * 0.2), ts.PACKET_SIZE)
+            if sample_offset > effective_size - ts.PACKET_SIZE:
+                sample_offset = max(effective_size - ts.PACKET_SIZE, 0)
+            sample_size = ClosestMultiple(6 * 1024 * 1024, ts.PACKET_SIZE)
+            sample_size = min(sample_size, effective_size - sample_offset)
+            if sample_size < ts.PACKET_SIZE * 100:
+                return None
+            with file_path.open('rb') as f:
+                f.seek(sample_offset)
+                sample_data = f.read(sample_size)
+        except Exception as ex:
+            logging.warning(f'{self.recorded_video.file_path}: Failed to read TS sample for PID analysis:', exc_info=ex)
+            return None
+
+        pid_counts: dict[int, int] = {}
+        offset = 0
+        while offset + ts.PACKET_SIZE <= len(sample_data):
+            if sample_data[offset] != ts.SYNC_BYTE[0]:
+                offset += 1
+                continue
+            packet = sample_data[offset:offset + ts.PACKET_SIZE]
+            packet_pid = pid(packet)
+            pid_counts[packet_pid] = pid_counts.get(packet_pid, 0) + 1
+            offset += ts.PACKET_SIZE
+
+        if len(pid_counts) == 0:
+            return None
+
+        # 映像 PID と音声 PID の出現回数を評価して service_id を選定
+        best_service_id: int | None = None
+        best_score = -1
+        best_video_count = -1
+        best_audio_count = -1
+        for service_id in service_id_order:
+            if service_id not in service_pid_map:
+                continue
+            video_pids = service_pid_map[service_id]['video_pids']
+            audio_pids = service_pid_map[service_id]['audio_pids']
+            video_count = sum(pid_counts.get(p, 0) for p in video_pids)
+            audio_count = sum(pid_counts.get(p, 0) for p in audio_pids)
+            # 映像を優先してスコア化する
+            score = video_count * 2 + audio_count
+            if score > best_score:
+                best_score = score
+                best_video_count = video_count
+                best_audio_count = audio_count
+                best_service_id = service_id
+            elif score == best_score and best_service_id is not None:
+                # スコアが同じ場合は映像 PID が多い方を優先する
+                if video_count > best_video_count:
+                    best_video_count = video_count
+                    best_audio_count = audio_count
+                    best_service_id = service_id
+                elif video_count == best_video_count and audio_count > best_audio_count:
+                    best_audio_count = audio_count
+                    best_service_id = service_id
+
+        if best_service_id is not None and best_score > 0:
+            logging.debug(
+                f'{self.recorded_video.file_path}: Selected service_id {best_service_id} by PID frequency '
+                f'(score: {best_score}, video: {best_video_count}, audio: {best_audio_count}).'
+            )
+            return best_service_id
+
+        return None
+
+
+    @classmethod
+    def __readPSIData(cls, reader: BufferedReader, target_pids: list[int], callback: Callable[[float, int, bytes], bool]) -> bool:
         """
         書庫から PSI/SI セクションを取り出す
 

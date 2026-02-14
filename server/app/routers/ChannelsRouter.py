@@ -4,25 +4,25 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 from typing import Annotated, Any
-from zoneinfo import ZoneInfo
 
 import anyio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from fastapi.security.utils import get_authorization_scheme_param
 from tortoise import connections
 
 from app import logging, schemas
 from app.config import Config
-from app.constants import HTTPX_CLIENT, LOGO_DIR, VERSION
+from app.constants import HTTPX_CLIENT, JST, LOGO_DIR, VERSION
 from app.models.Channel import Channel
 from app.routers.UsersRouter import GetCurrentUser
 from app.streams.LiveStream import LiveStream
-from app.utils import GetMirakurunAPIEndpointURL
+from app.utils import GetMirakurunAPIEndpointURL, ParseDatetimeStringToJST
 from app.utils.edcb.CtrlCmdUtil import CtrlCmdUtil
 from app.utils.edcb.EDCBUtil import EDCBUtil
 from app.utils.JikkyoClient import JikkyoClient
+from app.utils.TSInformation import TSInformation
 
 
 # ルーター
@@ -63,14 +63,17 @@ async def ChannelsAPI():
     """
 
     # 現在時刻
-    now = datetime.now(ZoneInfo('Asia/Tokyo'))
+    now = datetime.now(JST)
 
     # タスク
     tasks = []
 
     # チャンネル情報を取得
+    # remocon_id (リモコン番号) を第一ソートキー、channel_number (チャンネル番号) を第二ソートキーとしてソート
+    # Tortoise ORM では order_by() を複数回チェーンすると最後の order_by() だけが有効になるため、
+    # 必ず order_by('remocon_id', 'channel_number') のように引数で指定する必要がある
     channels: list[Channel]
-    tasks.append(Channel.filter(is_watchable=True).order_by('channel_number').order_by('remocon_id'))
+    tasks.append(Channel.filter(is_watchable=True).order_by('remocon_id', 'channel_number'))
 
     # データベースの生のコネクションを取得
     # 地デジ・BS・CS を合わせると 18000 件近くになる番組情報を SQLite かつ ORM で絞り込んで素早く取得するのは無理があるらしい
@@ -143,6 +146,12 @@ async def ChannelsAPI():
             'is_subchannel': channel.is_subchannel,
             'is_radiochannel': channel.is_radiochannel,
             'is_watchable': True,
+            # 地デジチャンネルの地域名のリスト (デバッグ用)
+            # 広域放送局の場合は複数の地域名が含まれる
+            # 地デジ以外のチャンネルまたは地域が特定できない場合は None
+            'terrestrial_regions': (
+                TSInformation.getRegionNamesFromNetworkID(channel.network_id) if channel.type == 'GR' else None
+            ),
             'is_display': True,
             'viewer_count': 0,
             'program_present': None,
@@ -207,20 +216,20 @@ async def ChannelsAPI():
             # JSON データで格納されているカラムをデコードする
             ## ついでに SQL 文で設定した is_present / program_order フィールドを削除
             ## 現在の番組か次の番組かを判定するために使っているフィールドだが、もう判定は終わったので必要ない
-            ## あとなぜか DateTime 型の文字列値が正しい ISO8601 フォーマットになっていないので、ここで整形する
+            ## DB 由来の日時文字列は utils 側で JST aware datetime に正規化してから ISO8601 文字列にする
             ## 真偽値も SQLite では 0/1 で管理されているため、bool 型に変換する
             if channel_dict['program_present'] is not None:
                 channel_dict['program_present']['detail'] = json.loads(channel_dict['program_present']['detail'])
-                channel_dict['program_present']['start_time'] = channel_dict['program_present']['start_time'].replace(' ', 'T')
-                channel_dict['program_present']['end_time'] = channel_dict['program_present']['end_time'].replace(' ', 'T')
+                channel_dict['program_present']['start_time'] = ParseDatetimeStringToJST(channel_dict['program_present']['start_time']).isoformat()
+                channel_dict['program_present']['end_time'] = ParseDatetimeStringToJST(channel_dict['program_present']['end_time']).isoformat()
                 channel_dict['program_present']['is_free'] = bool(channel_dict['program_present']['is_free'])
                 channel_dict['program_present']['genres'] = json.loads(channel_dict['program_present']['genres'])
                 channel_dict['program_present'].pop('is_present')
                 channel_dict['program_present'].pop('program_order')
             if channel_dict['program_following'] is not None:
                 channel_dict['program_following']['detail'] = json.loads(channel_dict['program_following']['detail'])
-                channel_dict['program_following']['start_time'] = channel_dict['program_following']['start_time'].replace(' ', 'T')
-                channel_dict['program_following']['end_time'] = channel_dict['program_following']['end_time'].replace(' ', 'T')
+                channel_dict['program_following']['start_time'] = ParseDatetimeStringToJST(channel_dict['program_following']['start_time']).isoformat()
+                channel_dict['program_following']['end_time'] = ParseDatetimeStringToJST(channel_dict['program_following']['end_time']).isoformat()
                 channel_dict['program_following']['is_free'] = bool(channel_dict['program_following']['is_free'])
                 channel_dict['program_following']['genres'] = json.loads(channel_dict['program_following']['genres'])
                 channel_dict['program_following'].pop('is_present')
@@ -239,9 +248,8 @@ async def ChannelsAPI():
         ## 後から filter() で絞り込むのだと効率が悪い
         result[channel_dict['type']].append(channel_dict)
 
-    # JSONResponse を直接返すことで、通常自動的に行われる重いバリデーションや整形処理を回避できる
-    ## チャンネル情報は情報量が多くすべてのチャンネルに対してバリデーションを行うと重くなるため、検証をスキップしてパフォーマンスを向上させる
-    return JSONResponse(result)
+    # Pydantic v2 ではバリデーションが高速化されているため、通常通り Pydantic モデルを返す
+    return schemas.LiveChannels.model_validate(result)
 
 
 @router.get(
@@ -259,6 +267,13 @@ async def ChannelAPI(
 
     # 現在と次の番組情報を取得
     channel.program_present, channel.program_following = await channel.getCurrentAndNextProgram()
+
+    # 地デジチャンネルの地域名のリストを設定 (デバッグ用)
+    # 広域放送局の場合は複数の地域名が含まれる
+    # 地デジ以外のチャンネルまたは地域が特定できない場合は None
+    channel.terrestrial_regions = (
+        TSInformation.getRegionNamesFromNetworkID(channel.network_id) if channel.type == 'GR' else None
+    )
 
     # チャンネル情報を返却
     return channel
