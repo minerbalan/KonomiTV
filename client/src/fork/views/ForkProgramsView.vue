@@ -40,7 +40,7 @@ import HeaderBar from '@/components/HeaderBar.vue';
 import Navigation from '@/components/Navigation.vue';
 import SPHeaderBar from '@/components/SPHeaderBar.vue';
 import ForkRecordedProgramList from '@/fork/components/ForkRecordedProgramList.vue';
-import { IRecordedProgram, ICustomSearch, SortOrder } from '@/fork/services/ForkVideos';
+import { IForkRecordedProgram, ICustomSearch, SortOrder } from '@/fork/services/ForkVideos';
 import ForkVideos from '@/fork/services/ForkVideos';
 import useUserStore from '@/stores/UserStore';
 
@@ -49,7 +49,7 @@ const route = useRoute();
 const router = useRouter();
 
 // 録画番組のリスト
-const programs = ref<IRecordedProgram[]>([]);
+const programs = ref<IForkRecordedProgram[]>([]);
 const total_programs = ref(0);
 const is_loading = ref(true);
 

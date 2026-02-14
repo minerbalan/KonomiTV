@@ -89,7 +89,7 @@ import { useRouter } from 'vue-router';
 
 import RecordedProgram from '@/components/Videos/RecordedProgram.vue';
 import ForkVideoChoice from '@/fork/components/ForkVideoChoice.vue';
-import { ICustomSearch, IRecordedProgram, MylistSortOrder, SortOrder } from '@/fork/services/ForkVideos';
+import { ICustomSearch, IForkRecordedProgram, MylistSortOrder, SortOrder } from '@/fork/services/ForkVideos';
 import Utils from '@/utils';
 
 const router = useRouter();
@@ -97,7 +97,7 @@ const router = useRouter();
 // Props
 const props = withDefaults(defineProps<{
     title: string;
-    programs: IRecordedProgram[];
+    programs: IForkRecordedProgram[];
     total: number;
     page?: number;
     sortOrder?: SortOrder | MylistSortOrder;
@@ -153,7 +153,7 @@ const sort_order = ref<SortOrder | MylistSortOrder>(props.sortOrder);
 const customSearch = ref<ICustomSearch>({ ...props.customSearch });
 
 // 内部で管理するプログラムリスト
-const displayPrograms = ref<IRecordedProgram[]>([...props.programs]);
+const displayPrograms = ref<IForkRecordedProgram[]>([...props.programs]);
 // 内部で管理する合計数
 const displayTotal = ref<number>(props.total);
 

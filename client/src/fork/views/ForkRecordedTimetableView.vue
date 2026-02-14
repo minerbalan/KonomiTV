@@ -35,10 +35,11 @@ import Navigation from '@/components/Navigation.vue';
 import SPHeaderBar from '@/components/SPHeaderBar.vue';
 import ForkRecordedTimetable from '@/fork/components/ForkRecordedTimetable.vue';
 import ForkVideos from '@/fork/services/ForkVideos';
-import { IRecordedProgram } from '@/fork/services/ForkVideos';
+import { IForkRecordedProgram } from '@/fork/services/ForkVideos';
 import { IChannel } from '@/services/Channels';
 import type { Program, Channel } from '@/fork/types/timetable';
 import useUserStore from '@/stores/UserStore';
+import {IRecordedProgram} from "@/services/Videos";
 
 const router = useRouter();
 const route = useRoute();
@@ -98,7 +99,7 @@ const fetchProgramData = async (date: Date) => {
 
         if (result) {
             // 番組データを変換（Fork機能: fork_recorded_videoも含める）
-            programs.value = result.recorded_programs.map((program: IRecordedProgram) => ({
+            programs.value = result.recorded_programs.map((program: IForkRecordedProgram) => ({
                 id: program.id,
                 title: program.title,
                 subtitle: program.subtitle || undefined,
@@ -121,7 +122,7 @@ const fetchProgramData = async (date: Date) => {
 
             // チャンネルデータを抽出（重複を除く）
             const channelMap = new Map<string, IChannel>();
-            result.recorded_programs.forEach((program: IRecordedProgram) => {
+            result.recorded_programs.forEach((program: IForkRecordedProgram) => {
                 if (program.channel && !channelMap.has(program.channel.id)) {
                     channelMap.set(program.channel.id, program.channel);
                 }
