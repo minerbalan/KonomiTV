@@ -21,9 +21,11 @@ from app.metadata.KeyFrameAnalyzer import KeyFrameAnalyzer
 from app.metadata.MetadataAnalyzer import MetadataAnalyzer
 from app.metadata.ThumbnailGenerator import ThumbnailGenerator
 from app.models.Channel import Channel
+from app.models.ForkRecordedVideos import ForkRecordedVideo
 from app.models.RecordedProgram import RecordedProgram
 from app.models.RecordedVideo import RecordedVideo
 from app.utils.DriveIOLimiter import DriveIOLimiter
+from app.utils.JikkyoClient import JikkyoClient
 from app.utils.ProcessLimiter import ProcessLimiter
 
 
